@@ -1,0 +1,50 @@
+#!/bin/sh
+set -e -u
+set -x
+# mostly from signing-template.generate, adjusted path, hardcoded some variables
+pkg_base="${1?:missing binary package name}"
+parsechangelog_src="${2?:missing dpkg-parsechangelog src}"
+pkg_unsigned="${pkg_base}-unsigned"
+pkg_signed="${pkg_base}-signed"
+pkg_tmpl="${pkg_signed}-template"
+
+export SB_PLATFORM="x86_64-efi"
+export SB_EFI_NAME="x64"
+
+DEB_HOST_ARCH=$(dpkg-architecture -qDEB_HOST_ARCH)
+distribution="$(dpkg-parsechangelog -l${parsechangelog_src} -S Distribution)"
+urgency="$(dpkg-parsechangelog -l${parsechangelog_src} -S Urgency)"
+date="$(dpkg-parsechangelog -l${parsechangelog_src} -S Date)"
+version_binary="$(dpkg-parsechangelog -l${parsechangelog_src} -S Version)"
+version_mangled="$(dpkg-parsechangelog -l${parsechangelog_src} -S Version | tr '-' '+')"
+
+subst () {
+	sed \
+		-e "s/@pkg_unsigned@/${pkg_unsigned}/g" \
+		-e "s/@pkg_signed@/${pkg_signed}/g" \
+		-e "s/@pkg_tmpl@/${pkg_tmpl}/g" \
+		-e "s/@efi@/${SB_EFI_NAME}/g" \
+		-e "s/@efi_platform@/${SB_PLATFORM}/g" \
+		-e "s/@arch@/${DEB_HOST_ARCH}/g" \
+		-e "s/@version_binary@/${version_binary}/g" \
+		-e "s/@version_mangled@/${version_mangled}/g" \
+		-e "s/@distribution@/${distribution}/g" \
+		-e "s/@urgency@/${urgency}/g" \
+		-e "s/@date@/${date}/g" \
+		"$@"
+}
+
+find "./my-sign-template" -type f -printf '%P\n' |
+while read path
+do
+	src="./my-sign-template/${path}"
+	dst="./debian/${path}"
+
+	install -m 0755 -d "${dst%/*}"
+	subst < "${src}" > "${dst%.in}"
+	chmod --reference="${src}" "${dst%.in}"
+done
+
+export SB_PLATFORM=
+export SB_EFI_NAME=
+
